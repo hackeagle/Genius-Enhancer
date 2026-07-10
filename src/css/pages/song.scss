@@ -61,6 +61,29 @@ annotation-sidebar leaderboard>div {
     }
 }
 
+// Modern Genius annotation drawer
+//
+// Genius positions the active annotation panel absolutely on desktop song pages.
+// If its column is not a positioned container, the panel can size itself against
+// the whole page grid instead of the right-hand annotation column, which makes
+// annotations overflow horizontally on narrower/resized windows.
+[class*="AnnotationPortal-desktop__Column"] {
+    position: relative;
+    min-width: 0;
+}
+
+[class*="AnnotationPortal-desktop__Sticky"],
+[class*="BaseAnnotation-desktop__Container"],
+[class*="BaseAnnotation-desktop__InnerContainer"],
+[class*="BaseAnnotation-desktop__AnnotationWrapper"],
+[class*="Annotation__Container"],
+[class*="UnreviewedAnnotation__Container"],
+[class*="NewAnnotationComment__ToggleContainer"],
+[class*="NewAnnotationComment__ToggleButton"] {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 // Song Metadata
 #edit-metadata-overlay.dSfHrp {
     -webkit-backdrop-filter: blur(10px);
