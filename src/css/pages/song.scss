@@ -201,3 +201,145 @@ annotation-sidebar leaderboard>div {
         }
     }
 }
+
+.ge-bracket-highlighter {
+    position: relative;
+
+    .ge-bracket-highlighter-overlay,
+    .ge-bracket-highlighter-textarea {
+        box-sizing: border-box;
+        font: inherit;
+        letter-spacing: inherit;
+        line-height: inherit;
+        overflow-wrap: break-word;
+        white-space: pre-wrap;
+    }
+
+    .ge-bracket-highlighter-overlay {
+        border: 1px solid transparent;
+        color: transparent;
+        overflow: hidden;
+        pointer-events: none;
+        position: absolute;
+        z-index: 0;
+    }
+
+    .ge-bracket-highlighter-textarea {
+        position: relative;
+        z-index: 1;
+    }
+
+    &.has-bracket-issues {
+        .ge-bracket-highlighter-textarea {
+            background: transparent !important;
+            caret-color: #000;
+            color: transparent !important;
+        }
+
+        .ge-bracket-highlighter-overlay {
+            color: inherit;
+        }
+    }
+
+    &:not(.has-bracket-issues) {
+        .ge-bracket-highlighter-tools {
+            display: none;
+        }
+    }
+
+    .ge-bracket-issue {
+        background: rgba(255, 20, 100, 0.22);
+        border-bottom: 2px solid #ff1464;
+        border-radius: 3px;
+        color: #9a0036;
+        font-weight: 700;
+
+        &.ge-bracket-issue-focus {
+            background: #ff1464;
+            color: #fff;
+            outline: 2px solid #000;
+        }
+    }
+
+    .ge-bracket-highlighter-tools {
+        align-items: center;
+        background: #fff7d6;
+        border: 1px solid #f0ca56;
+        border-left: 4px solid #ff1464;
+        border-radius: 5px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        color: #2d2d2d;
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 0.8rem;
+        gap: 8px;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        padding: 7px 10px;
+        position: relative;
+        z-index: 2;
+
+        .ge-bracket-highlighter-status {
+            color: #9a0036;
+            font-weight: 600;
+        }
+    }
+
+    .ge-bracket-highlighter-jump {
+        background: #fff;
+        border: 1px solid #b98a00;
+        border-radius: 5px;
+        color: #1f1f1f;
+        cursor: pointer;
+        font-size: 0.75rem;
+        padding: 3px 8px;
+
+        &:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+    }
+}
+
+.ge-quill-bracket-status {
+    align-items: center;
+    background: #fff7d6;
+    border: 1px solid #f0ca56;
+    border-left: 4px solid #ff1464;
+    border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    color: #2d2d2d;
+    display: flex;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    gap: 8px;
+    justify-content: space-between;
+    margin-top: 6px;
+    padding: 7px 10px;
+
+    &:not(.has-bracket-issues) {
+        display: none;
+    }
+
+    &.has-bracket-issues {
+        .ge-quill-bracket-status-text {
+            color: #9a0036;
+            font-weight: 600;
+        }
+    }
+
+    .ge-quill-bracket-jump {
+        background: #fff;
+        border: 1px solid #b98a00;
+        border-radius: 5px;
+        color: #1f1f1f;
+        cursor: pointer;
+        font-size: 0.75rem;
+        padding: 3px 8px;
+
+        &:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+    }
+}

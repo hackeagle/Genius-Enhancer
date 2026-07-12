@@ -449,6 +449,7 @@ export async function handleSongPage(tabId) {
 			};
 
 			const updateRestoreButtonState = (restoreButton, type) => {
+				if (!restoreButton) return;
 				const text = sessionStorage.getItem(`ge-input-tracker-${type}`);
 
 				if (text) {
@@ -462,6 +463,218 @@ export async function handleSongPage(tabId) {
 				}
 			};
 
+			const findUnmatchedBrackets = (text) => {
+				const openingBrackets = {
+					"(": ")",
+					"[": "]"
+				};
+				const closingBrackets = {
+					")": "(",
+					"]": "["
+				};
+				const stacks = {
+					"(": [],
+					"[": []
+				};
+				const issues = [];
+
+				for (let index = 0; index < text.length; index++) {
+					const char = text[index];
+
+					if (openingBrackets[char]) {
+						stacks[char].push({ char, index, reason: `missing ${openingBrackets[char]}` });
+					} else if (closingBrackets[char]) {
+						const expectedOpener = closingBrackets[char];
+
+						if (stacks[expectedOpener].length) {
+							stacks[expectedOpener].pop();
+						} else {
+							issues.push({ char, index, reason: `missing ${expectedOpener}` });
+						}
+					}
+				}
+
+				return issues
+					.concat(stacks["("], stacks["["])
+					.sort((a, b) => a.index - b.index);
+			};
+
+			const escapeHtml = (text) => {
+				return text
+					.replace(/&/g, "&amp;")
+					.replace(/</g, "&lt;")
+					.replace(/>/g, "&gt;")
+					.replace(/"/g, "&quot;")
+					.replace(/'/g, "&#039;");
+			};
+
+			const getLineAndColumn = (text, index) => {
+				const beforeIssue = text.slice(0, index);
+				const lines = beforeIssue.split("\n");
+
+				return {
+					line: lines.length,
+					column: lines[lines.length - 1].length + 1
+				};
+			};
+
+			const renderBracketHighlights = (text, issues, focusIndex = null) => {
+				const issueIndexes = new Map(issues.map(issue => [issue.index, issue.reason]));
+				let html = "";
+
+				for (let index = 0; index < text.length; index++) {
+					const char = escapeHtml(text[index]);
+
+					if (issueIndexes.has(index)) {
+						const focusClass = index === focusIndex ? " ge-bracket-issue-focus" : "";
+						html += `<span class="ge-bracket-issue${focusClass}" title="${issueIndexes.get(index)}">${char}</span>`;
+					} else {
+						html += char;
+					}
+				}
+
+				return html || " ";
+			};
+
+			const syncBracketHighlighterStyles = (textarea, overlay) => {
+				const textareaStyles = getComputedStyle(textarea);
+				const mirroredProperties = [
+					"borderBottomWidth",
+					"borderLeftWidth",
+					"borderRightWidth",
+					"borderTopWidth",
+					"fontFamily",
+					"fontSize",
+					"fontStyle",
+					"fontWeight",
+					"letterSpacing",
+					"lineHeight",
+					"paddingBottom",
+					"paddingLeft",
+					"paddingRight",
+					"paddingTop",
+					"textAlign",
+					"textIndent",
+					"textTransform",
+					"wordSpacing"
+				];
+
+				mirroredProperties.forEach(property => {
+					overlay.style[property] = textareaStyles[property];
+				});
+				overlay.style.left = `${textarea.offsetLeft}px`;
+				overlay.style.top = `${textarea.offsetTop}px`;
+				overlay.style.width = `${textarea.offsetWidth}px`;
+				overlay.style.height = `${textarea.offsetHeight}px`;
+			};
+
+			const scrollTextareaToIndex = (textarea, index) => {
+				const location = getLineAndColumn(textarea.value, index);
+				const textareaStyles = getComputedStyle(textarea);
+				const fontSize = parseFloat(textareaStyles.fontSize) || 16;
+				const lineHeight = parseFloat(textareaStyles.lineHeight) || fontSize * 1.2;
+				const centeredScrollTop = ((location.line - 1) * lineHeight) - (textarea.clientHeight / 2);
+
+				textarea.focus({ preventScroll: true });
+				textarea.setSelectionRange(index, index + 1);
+				textarea.scrollTop = Math.max(0, centeredScrollTop);
+				textarea.dispatchEvent(new Event("scroll"));
+				textarea.closest(".ge-bracket-highlighter")?.scrollIntoView({
+					block: "center",
+					behavior: "smooth"
+				});
+			};
+
+			const updateBracketHighlighter = (textarea) => {
+				const wrapper = textarea.closest(".ge-bracket-highlighter");
+				const overlay = wrapper?.querySelector(".ge-bracket-highlighter-overlay");
+				const status = wrapper?.querySelector(".ge-bracket-highlighter-status");
+				const jumpButton = wrapper?.querySelector(".ge-bracket-highlighter-jump");
+
+				if (!wrapper || !overlay || !status || !jumpButton) return;
+
+				const text = textarea.value;
+				const issues = findUnmatchedBrackets(text);
+				const focusIndex = Number(wrapper.dataset.focusIndex);
+				syncBracketHighlighterStyles(textarea, overlay);
+				overlay.innerHTML = renderBracketHighlights(text, issues, Number.isInteger(focusIndex) ? focusIndex : null);
+
+				if (issues.length) {
+					const firstIssue = issues[0];
+					const location = getLineAndColumn(text, firstIssue.index);
+					const issueText = issues.length === 1 ? "1 unmatched bracket" : `${issues.length} unmatched brackets`;
+
+					wrapper.classList.add("has-bracket-issues");
+					status.textContent = `${issueText}. First one is ${firstIssue.reason} on line ${location.line}, column ${location.column}.`;
+					jumpButton.disabled = false;
+					jumpButton.dataset.index = firstIssue.index;
+					jumpButton.title = "Select the first unmatched bracket";
+				} else {
+					wrapper.classList.remove("has-bracket-issues");
+					status.textContent = "No unmatched brackets found.";
+					jumpButton.disabled = true;
+					delete jumpButton.dataset.index;
+					jumpButton.title = "No unmatched brackets found";
+				}
+
+				overlay.scrollTop = textarea.scrollTop;
+				overlay.scrollLeft = textarea.scrollLeft;
+			};
+
+			const initializeBracketHighlighter = (textarea) => {
+				if (!textarea || textarea.dataset.geBracketHighlighter === "true") return;
+				if (!textarea.getClientRects().length) return;
+
+				const wrapper = document.createElement("div");
+				wrapper.className = "ge-bracket-highlighter";
+
+				const overlay = document.createElement("div");
+				overlay.className = "ge-bracket-highlighter-overlay";
+				overlay.setAttribute("aria-hidden", "true");
+
+				const tools = document.createElement("div");
+				tools.className = "ge-bracket-highlighter-tools";
+
+				const status = document.createElement("span");
+				status.className = "ge-bracket-highlighter-status";
+
+				const jumpButton = document.createElement("button");
+				jumpButton.type = "button";
+				jumpButton.className = "ge-bracket-highlighter-jump";
+				jumpButton.textContent = "Jump to bracket";
+				jumpButton.addEventListener("click", (event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					const issueIndex = Number(jumpButton.dataset.index);
+					if (!Number.isInteger(issueIndex)) return;
+
+					wrapper.dataset.focusIndex = issueIndex;
+					scrollTextareaToIndex(textarea, issueIndex);
+					updateBracketHighlighter(textarea);
+					window.setTimeout(() => {
+						if (wrapper.dataset.focusIndex === String(issueIndex)) {
+							delete wrapper.dataset.focusIndex;
+							updateBracketHighlighter(textarea);
+						}
+					}, 1800);
+				});
+
+				textarea.parentNode.insertBefore(wrapper, textarea);
+				wrapper.append(tools, overlay, textarea);
+				tools.append(status, jumpButton);
+
+				textarea.dataset.geBracketHighlighter = "true";
+				textarea.classList.add("ge-bracket-highlighter-textarea");
+				textarea.addEventListener("input", () => updateBracketHighlighter(textarea));
+				textarea.addEventListener("scroll", () => {
+					overlay.scrollTop = textarea.scrollTop;
+					overlay.scrollLeft = textarea.scrollLeft;
+				});
+				window.addEventListener("resize", () => updateBracketHighlighter(textarea));
+
+				updateBracketHighlighter(textarea);
+			};
+
 			const handleInput = (textarea, type) => {
 				const inputValue = textarea.value.trim();
 				if (inputValue) {
@@ -469,6 +682,10 @@ export async function handleSongPage(tabId) {
 				}
 				const restoreButton = document.querySelector(`.ge-restore-button.${type}`);
 				updateRestoreButtonState(restoreButton, type);
+
+				if (type === "lyrics") {
+					updateBracketHighlighter(textarea);
+				}
 			};
 
 			const handleRestore = (textarea, type) => {
@@ -703,6 +920,10 @@ export async function handleSongPage(tabId) {
 				if (textarea) {
 					console.info(`Tracking ${type} input (textarea:`, textarea, `)`);
 					textarea.addEventListener('input', () => handleInput(textarea, type));
+
+					if (type === "lyrics") {
+						initializeBracketHighlighter(textarea);
+					}
 				}
 
 				const toolbar = document.querySelector(toolbarQuery);
@@ -715,6 +936,8 @@ export async function handleSongPage(tabId) {
 					toolbar.insertBefore(restoreButton, toolbar.children[1]);
 				}
 			});
+
+			document.querySelectorAll(`textarea.${LYRICS_TEXTAREA_CLASS}`).forEach(initializeBracketHighlighter);
 		}
 	});
 }

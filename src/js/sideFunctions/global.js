@@ -288,12 +288,15 @@ export async function getCreditsList(query) {
  * @returns {void}
  */
 export function replaceTextarea(textareaSelector) {
-    if ($(".ql-editor").length) {
+    const visibleQuillEditor = [...document.querySelectorAll(".ql-editor")]
+        .find(editor => editor.getClientRects().length > 0);
+    if (visibleQuillEditor) {
         console.info("Quill already exists");
         return;
     }
 
-    const textarea = document.querySelector(textareaSelector) ||
+    const textarea = [...document.querySelectorAll(textareaSelector)]
+        .find(element => element.getClientRects().length > 0) ||
         document.getElementsByClassName(textareaSelector)[0];
     if (!textarea) {
         console.info("Genius Enhancer could not find an editor textarea.");
@@ -376,7 +379,147 @@ export function replaceTextarea(textareaSelector) {
         $(toolbar).before(toolbarContainer);
     }
 
+    const findUnmatchedBrackets = (text) => {
+        const openingBrackets = {
+            "(": ")",
+            "[": "]"
+        };
+        const closingBrackets = {
+            ")": "(",
+            "]": "["
+        };
+        const stacks = {
+            "(": [],
+            "[": []
+        };
+        const issues = [];
+
+        for (let index = 0; index < text.length; index++) {
+            const char = text[index];
+
+            if (openingBrackets[char]) {
+                stacks[char].push({ char, index, reason: `missing ${openingBrackets[char]}` });
+            } else if (closingBrackets[char]) {
+                const expectedOpener = closingBrackets[char];
+
+                if (stacks[expectedOpener].length) {
+                    stacks[expectedOpener].pop();
+                } else {
+                    issues.push({ char, index, reason: `missing ${expectedOpener}` });
+                }
+            }
+        }
+
+        return issues
+            .concat(stacks["("], stacks["["])
+            .sort((a, b) => a.index - b.index);
+    };
+
+    const getLineAndColumn = (text, index) => {
+        const beforeIssue = text.slice(0, index);
+        const lines = beforeIssue.split("\n");
+
+        return {
+            line: lines.length,
+            column: lines[lines.length - 1].length + 1
+        };
+    };
+
+    editor.parentNode.querySelectorAll(".ge-quill-bracket-status").forEach(status => status.remove());
+
+    const bracketStatus = document.createElement("div");
+    bracketStatus.className = "ge-quill-bracket-status";
+
+    const bracketStatusText = document.createElement("span");
+    bracketStatusText.className = "ge-quill-bracket-status-text";
+
+    const bracketJumpButton = document.createElement("button");
+    bracketJumpButton.type = "button";
+    bracketJumpButton.className = "ge-quill-bracket-jump";
+    bracketJumpButton.textContent = "Jump to bracket";
+
+    const scrollQuillSelectionIntoView = (index) => {
+        const selection = window.getSelection();
+        const selectionRect = selection?.rangeCount
+            ? selection.getRangeAt(0).getBoundingClientRect()
+            : null;
+
+        if (selectionRect?.height) {
+            window.scrollBy({
+                top: selectionRect.top - (window.innerHeight / 2),
+                behavior: "smooth"
+            });
+            return;
+        }
+
+        const bounds = quill.getBounds(index, 1);
+        const containerRect = quill.container.getBoundingClientRect();
+        window.scrollBy({
+            top: containerRect.top + bounds.top - (window.innerHeight / 2),
+            behavior: "smooth"
+        });
+    };
+
+    bracketJumpButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const issueIndex = Number(bracketJumpButton.dataset.index);
+        if (!Number.isInteger(issueIndex)) return;
+
+        quill.focus();
+        quill.setSelection(issueIndex, 1);
+        quill.formatText(issueIndex, 1, {
+            background: "#ff1464",
+            color: "#fff"
+        }, "silent");
+        window.setTimeout(() => scrollQuillSelectionIntoView(issueIndex), 0);
+        window.setTimeout(updateQuillBracketHighlighter, 1800);
+    });
+
+    bracketStatus.append(bracketStatusText, bracketJumpButton);
+    quill.container.parentNode.insertBefore(bracketStatus, quill.container.nextSibling);
+
+    let highlightedBracketIndexes = [];
+    const updateQuillBracketHighlighter = () => {
+        highlightedBracketIndexes.forEach(index => {
+            quill.formatText(index, 1, {
+                background: false,
+                color: false
+            }, "silent");
+        });
+
+        const text = quill.getText();
+        const issues = findUnmatchedBrackets(text);
+        highlightedBracketIndexes = issues.map(issue => issue.index);
+
+        issues.forEach(issue => {
+            quill.formatText(issue.index, 1, {
+                background: "rgba(255, 20, 100, 0.22)",
+                color: "#9a0036"
+            }, "silent");
+        });
+
+        if (issues.length) {
+            const firstIssue = issues[0];
+            const location = getLineAndColumn(text, firstIssue.index);
+            const issueText = issues.length === 1 ? "1 unmatched bracket" : `${issues.length} unmatched brackets`;
+
+            bracketStatus.classList.add("has-bracket-issues");
+            bracketStatusText.textContent = `${issueText}. First one is ${firstIssue.reason} on line ${location.line}, column ${location.column}.`;
+            bracketJumpButton.disabled = false;
+            bracketJumpButton.dataset.index = firstIssue.index;
+            bracketJumpButton.title = "Select the first unmatched bracket";
+        } else {
+            bracketStatus.classList.remove("has-bracket-issues");
+            bracketStatusText.textContent = "No unmatched brackets found.";
+            bracketJumpButton.disabled = true;
+            delete bracketJumpButton.dataset.index;
+            bracketJumpButton.title = "No unmatched brackets found";
+        }
+    };
+
     quill.clipboard.dangerouslyPasteHTML(content);
+    updateQuillBracketHighlighter();
 
     quill.on('text-change', function(delta, oldDelta, source) {
         let markdownFormat = quill.root.innerHTML
@@ -439,6 +582,7 @@ export function replaceTextarea(textareaSelector) {
         });
         textarea.dispatchEvent(inputEvent);
         textarea.dispatchEvent(new Event("change", { bubbles: true }));
+        updateQuillBracketHighlighter();
     });
 
     if (isForumEditor) {
